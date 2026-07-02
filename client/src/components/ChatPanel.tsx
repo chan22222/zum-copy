@@ -7,13 +7,15 @@ interface Props {
   selfId: string | null
   onSend: (text: string) => void
   onClose: () => void
+  /** 전체화면 위에 반투명하게 띄우는 모드 */
+  overlay?: boolean
 }
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function ChatPanel({ messages, selfId, onSend, onClose }: Props) {
+export default function ChatPanel({ messages, selfId, onSend, onClose, overlay = false }: Props) {
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -30,7 +32,13 @@ export default function ChatPanel({ messages, selfId, onSend, onClose }: Props) 
   }
 
   return (
-    <aside className="absolute inset-y-0 right-0 z-20 flex w-full max-w-sm flex-col border-l border-ink-700 bg-ink-900 lg:static lg:w-80 lg:max-w-none">
+    <aside
+      className={
+        overlay
+          ? 'absolute inset-y-0 right-0 z-20 flex w-80 max-w-[85vw] flex-col border-l border-ink-700/50 bg-ink-900/60 backdrop-blur-md'
+          : 'absolute inset-y-0 right-0 z-20 flex w-full max-w-sm flex-col border-l border-ink-700 bg-ink-900 lg:static lg:w-80 lg:max-w-none'
+      }
+    >
       <div className="flex items-center justify-between border-b border-ink-700 px-4 py-3">
         <h2 className="text-sm font-semibold">채팅</h2>
         <button

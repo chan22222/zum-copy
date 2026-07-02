@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRoom } from '../hooks/useRoom'
 import type { MediaState } from '../types'
 import ChatPanel from './ChatPanel'
 import ControlBar from './ControlBar'
-import { LinkIcon } from './icons'
+import { ChatIcon, CloseIcon, LinkIcon } from './icons'
+import PeerAudio from './PeerAudio'
 import VideoTile from './VideoTile'
 
 interface Props {
@@ -28,8 +29,12 @@ export default function Room({ roomId, userName, onLeave }: Props) {
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth >= 1024)
   const [copied, setCopied] = useState(false)
   const [unread, setUnread] = useState(0)
+  const [volumes, setVolumes] = useState<Record<string, number>>({})
+  const [fsTileId, setFsTileId] = useState<string | null>(null)
+  const [fsChatOpen, setFsChatOpen] = useState(true)
   const seenCountRef = useRef(0)
   const copiedTimerRef = useRef<number | undefined>(undefined)
+  const fsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (chatOpen) {
@@ -55,6 +60,10 @@ export default function Room({ roomId, userName, onLeave }: Props) {
     }
   }
 
+  const setPeerVolume = useCallback((id: string, volume: number) => {
+    setVolumes((prev) => ({ ...prev, [id]: volume }))
+  }, [])
+
   const tiles = useMemo<Tile[]>(
     () => [
       {
@@ -78,9 +87,67 @@ export default function Room({ roomId, userName, onLeave }: Props) {
   // 화면 공유 중인 참가자가 있으면 그 화면을 스테이지로 크게 표시
   const stage = tiles.find((tile) => tile.media.screen) ?? null
   const strip = stage ? tiles.filter((tile) => tile.id !== stage.id) : []
+  const fsTile = fsTileId ? (tiles.find((tile) => tile.id === fsTileId) ?? null) : null
+
+  const exitFullscreen = useCallback(() => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {
+        /* 이미 종료된 경우 */
+      })
+    }
+    setFsTileId(null)
+  }, [])
+
+  // 더블클릭으로 대상이 지정되면 브라우저 전체화면 요청
+  // (거부되더라도 fixed 오버레이로 확대 표시는 유지된다)
+  useEffect(() => {
+    if (!fsTileId) return
+    const el = fsRef.current
+    if (el && document.fullscreenElement !== el) {
+      el.requestFullscreen().catch(() => {
+        /* iOS 등 미지원 환경 */
+      })
+    }
+  }, [fsTileId])
+
+  // Esc 등 브라우저 쪽에서 전체화면이 풀리면 상태도 되돌린다
+  useEffect(() => {
+    const onChange = () => {
+      if (!document.fullscreenElement) setFsTileId(null)
+    }
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
+  // 전체화면으로 보던 참가자가 나가면 종료
+  useEffect(() => {
+    if (fsTileId && !tiles.some((tile) => tile.id === fsTileId)) exitFullscreen()
+  }, [fsTileId, tiles, exitFullscreen])
+
+  const renderTile = (tile: Tile, variant: 'grid' | 'stage' | 'strip' | 'full') => (
+    <VideoTile
+      key={tile.id}
+      name={tile.name}
+      stream={tile.stream}
+      media={tile.media}
+      isSelf={tile.isSelf}
+      variant={variant}
+      volume={volumes[tile.id] ?? 1}
+      onVolumeChange={tile.isSelf ? undefined : (volume) => setPeerVolume(tile.id, volume)}
+      onDoubleClick={variant === 'full' ? undefined : () => setFsTileId(tile.id)}
+    />
+  )
 
   return (
     <div className="flex h-full flex-col">
+      {/* 원격 오디오는 타일과 분리해 항상 재생 — 영상 프레임이 없어도 소리가 나온다 */}
+      {room.peers.map((peer) => {
+        const stream = room.remoteStreams.get(peer.id)
+        return stream ? (
+          <PeerAudio key={peer.id} stream={stream} volume={volumes[peer.id] ?? 1} />
+        ) : null
+      })}
+
       <header className="flex items-center gap-2 border-b border-ink-700 px-4 py-2.5">
         <span className="hidden font-semibold tracking-tight sm:inline">Virtual Meeting</span>
         <span className="rounded-md bg-ink-700 px-2 py-1 font-mono text-xs text-fog-300">
@@ -101,42 +168,16 @@ export default function Room({ roomId, userName, onLeave }: Props) {
         <main className="flex min-w-0 flex-1 flex-col">
           {stage ? (
             <>
-              <div className="min-h-0 flex-1 p-3">
-                <VideoTile
-                  key={stage.id}
-                  name={stage.name}
-                  stream={stage.stream}
-                  media={stage.media}
-                  isSelf={stage.isSelf}
-                  variant="stage"
-                />
-              </div>
+              <div className="min-h-0 flex-1 p-3">{renderTile(stage, 'stage')}</div>
               {strip.length > 0 && (
                 <div className="flex h-28 gap-2 overflow-x-auto px-3 pb-1">
-                  {strip.map((tile) => (
-                    <VideoTile
-                      key={tile.id}
-                      name={tile.name}
-                      stream={tile.stream}
-                      media={tile.media}
-                      isSelf={tile.isSelf}
-                      variant="strip"
-                    />
-                  ))}
+                  {strip.map((tile) => renderTile(tile, 'strip'))}
                 </div>
               )}
             </>
           ) : (
             <div className="grid min-h-0 flex-1 auto-rows-[minmax(9rem,1fr)] grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] gap-3 overflow-y-auto p-4">
-              {tiles.map((tile) => (
-                <VideoTile
-                  key={tile.id}
-                  name={tile.name}
-                  stream={tile.stream}
-                  media={tile.media}
-                  isSelf={tile.isSelf}
-                />
-              ))}
+              {tiles.map((tile) => renderTile(tile, 'grid'))}
             </div>
           )}
 
@@ -181,6 +222,58 @@ export default function Room({ roomId, userName, onLeave }: Props) {
           </div>
         )}
       </div>
+
+      {fsTile && (
+        <div ref={fsRef} className="fixed inset-0 z-50 bg-ink-950">
+          <div
+            className="h-full w-full"
+            onDoubleClick={exitFullscreen}
+            title="더블클릭: 전체화면 종료"
+          >
+            {renderTile(fsTile, 'full')}
+          </div>
+
+          <div
+            className={`absolute top-4 z-30 flex gap-2 transition-all ${
+              fsChatOpen ? 'right-[21rem]' : 'right-4'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => setFsChatOpen((open) => !open)}
+              aria-label={fsChatOpen ? '채팅 숨기기' : '채팅 표시'}
+              aria-pressed={fsChatOpen}
+              title={fsChatOpen ? '채팅 숨기기' : '채팅 표시'}
+              className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors ${
+                fsChatOpen
+                  ? 'bg-cord-600 text-white hover:bg-cord-500'
+                  : 'bg-ink-800/80 text-fog-100 hover:bg-ink-600'
+              }`}
+            >
+              <ChatIcon className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={exitFullscreen}
+              aria-label="전체화면 종료"
+              title="전체화면 종료"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-ink-800/80 text-fog-100 transition-colors hover:bg-ink-600"
+            >
+              <CloseIcon className="h-5 w-5" />
+            </button>
+          </div>
+
+          {fsChatOpen && (
+            <ChatPanel
+              overlay
+              messages={room.messages}
+              selfId={room.selfId}
+              onSend={room.sendMessage}
+              onClose={() => setFsChatOpen(false)}
+            />
+          )}
+        </div>
+      )}
     </div>
   )
 }

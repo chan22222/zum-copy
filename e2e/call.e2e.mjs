@@ -1,4 +1,4 @@
-// 실제 브라우저 E2E: WebRTC 통화 연결, 미디어 송수신, 채팅, 화면 공유, 3인 mesh
+// 실제 브라우저 E2E: WebRTC 통화 연결, 미디어 송수신, 채팅, 화면 공유, 볼륨, 전체화면, 3인 mesh
 // 사전 조건: 프로덕션 빌드가 서빙 중 (npm run build && npm start)
 // 실행: npm run test:e2e  (시스템 Chrome 또는 Edge 사용 — 별도 브라우저 다운로드 없음)
 import { chromium } from 'playwright'
@@ -42,13 +42,16 @@ async function join(room, name) {
   return page
 }
 
-// 원격 참가자들에게서 실제 오디오 RTP가 도착 중인지 (track.muted === false)
-const audioReceivingCount = (page) =>
+// 재생 중인 원격 오디오 수 (audio 요소가 실제 재생 + RTP 도착)
+const audioPlayingCount = (page) =>
   page.evaluate(() => {
-    const remotes = [...document.querySelectorAll('video')].filter((v) => !v.muted)
-    return remotes.filter((v) => {
-      const stream = v.srcObject
-      return stream && stream.getAudioTracks().some((t) => t.readyState === 'live' && !t.muted)
+    return [...document.querySelectorAll('audio')].filter((a) => {
+      const stream = a.srcObject
+      return (
+        stream &&
+        !a.paused &&
+        stream.getAudioTracks().some((t) => t.readyState === 'live' && !t.muted)
+      )
     }).length
   })
 
@@ -64,21 +67,42 @@ try {
   await bob.getByText('2명 참여 중').waitFor({ timeout: 10000 })
   check('양쪽 모두 참가자 2명 표시', true)
 
+  // 핵심: 상대가 카메라/화면공유를 켜지 않아도 오디오가 실제 "재생"되어야 한다
   await bob.waitForFunction(
     () => {
-      const remote = [...document.querySelectorAll('video')].find((v) => !v.muted)
-      const stream = remote?.srcObject
-      return !!stream && stream.getAudioTracks().some((t) => t.readyState === 'live' && !t.muted)
+      return [...document.querySelectorAll('audio')].some((a) => {
+        const stream = a.srcObject
+        return (
+          stream &&
+          !a.paused &&
+          a.currentTime > 0 &&
+          stream.getAudioTracks().some((t) => t.readyState === 'live' && !t.muted)
+        )
+      })
     },
     undefined,
     { timeout: 15000 },
   )
-  check('Bob이 Alice의 오디오를 실제 수신 중 (RTP 도착)', true)
+  check('영상 없이도 Bob이 Alice의 오디오를 실제 재생 중', true)
+
+  // 볼륨 슬라이더 → audio 요소 volume 반영
+  const slider = bob.locator('input[type="range"]').first()
+  await slider.evaluate((el) => {
+    // React 제어 컴포넌트는 네이티브 setter로 값을 넣어야 onChange가 발화한다
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+    setter.call(el, '0.3')
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  const volumeApplied = await bob.evaluate(() => {
+    const audio = document.querySelector('audio')
+    return audio ? Math.abs(audio.volume - 0.3) < 0.001 : false
+  })
+  check('볼륨 슬라이더가 원격 오디오 볼륨에 반영', volumeApplied)
 
   await alice.getByRole('button', { name: '카메라 켜기' }).click()
   await bob.waitForFunction(
     () => {
-      const remote = [...document.querySelectorAll('video')].find((v) => !v.muted)
+      const remote = [...document.querySelectorAll('video')].find((v) => v.srcObject)
       return !!remote && remote.videoWidth > 0 && !remote.paused
     },
     undefined,
@@ -94,6 +118,23 @@ try {
   await alice.getByRole('button', { name: '화면 공유 시작' }).click()
   await bob.getByText('화면 공유 중').first().waitFor({ timeout: 15000 })
   check('Alice 화면 공유가 Bob에게 스테이지로 표시', true)
+  await alice.getByRole('button', { name: '화면 공유 중지' }).click()
+
+  // 더블클릭 → 전체화면 오버레이 + 채팅 토글
+  await bob.locator('div.group').nth(1).dblclick()
+  await bob.locator('div.fixed.inset-0').waitFor({ timeout: 5000 })
+  check('타일 더블클릭으로 전체화면 오버레이 표시', true)
+  const chatVisibleInFs = await bob
+    .locator('div.fixed.inset-0 aside')
+    .isVisible()
+    .catch(() => false)
+  check('전체화면 안에 반투명 채팅 표시', chatVisibleInFs)
+  await bob.getByRole('button', { name: '채팅 숨기기' }).click()
+  const chatHidden = (await bob.locator('div.fixed.inset-0 aside').count()) === 0
+  check('전체화면 채팅 on/off 토글 동작', chatHidden)
+  await bob.getByRole('button', { name: '전체화면 종료' }).click()
+  const overlayGone = (await bob.locator('div.fixed.inset-0').count()) === 0
+  check('전체화면 종료 버튼 동작', overlayGone)
 
   await bob.getByRole('button', { name: '통화 나가기' }).click()
   await alice.getByText('1명 참여 중').waitFor({ timeout: 10000 })
@@ -111,19 +152,23 @@ try {
     await page.getByText('3명 참여 중').waitFor({ timeout: 10000 })
     await page.waitForFunction(
       () => {
-        const remotes = [...document.querySelectorAll('video')].filter((v) => !v.muted)
+        const audios = [...document.querySelectorAll('audio')]
         return (
-          remotes.length === 2 &&
-          remotes.every((v) => {
-            const stream = v.srcObject
-            return stream && stream.getAudioTracks().some((t) => t.readyState === 'live' && !t.muted)
+          audios.length === 2 &&
+          audios.every((a) => {
+            const stream = a.srcObject
+            return (
+              stream &&
+              !a.paused &&
+              stream.getAudioTracks().some((t) => t.readyState === 'live' && !t.muted)
+            )
           })
         )
       },
       undefined,
       { timeout: 15000 },
     )
-    check(`3인 mesh: ${name}이 나머지 2명 모두에게서 오디오 수신`, (await audioReceivingCount(page)) === 2)
+    check(`3인 mesh: ${name}이 나머지 2명 오디오 재생 중`, (await audioPlayingCount(page)) === 2)
   }
 } catch (err) {
   console.log(`FAIL — ${err.message.split('\n')[0]}`)
