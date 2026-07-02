@@ -57,8 +57,8 @@ export default function Lobby({ initialRoom, onJoin }: Props) {
       />
 
       <main className="relative w-full max-w-md">
-        <div className="mb-8">
-          <h1 className="text-xl font-bold tracking-tight">Virtual Meeting</h1>
+        <div className="mb-8 text-center">
+          <h1 className="text-3xl font-bold tracking-tight">Virtual Meeting</h1>
         </div>
 
         <div className="rounded-2xl border border-ink-700 bg-ink-900 p-6 sm:p-8">
@@ -158,6 +158,7 @@ export default function Lobby({ initialRoom, onJoin }: Props) {
         <p className="mt-6 text-center text-xs leading-relaxed text-fog-500">
           설치나 가입 없이 상대에게 초대 링크만 보내세요.
         </p>
+        <p className="mt-2 text-center text-xs text-fog-500/60">powered by chan</p>
       </main>
     </div>
   )
