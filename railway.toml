@@ -1,7 +1,6 @@
 [build]
-builder = "NIXPACKS"
+builder = "DOCKERFILE"
 
 [deploy]
-startCommand = "npm start"
 healthcheckPath = "/api/health"
 restartPolicyType = "ON_FAILURE"

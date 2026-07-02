@@ -1,0 +1,9 @@
+node_modules
+**/node_modules
+client/dist
+server/dist
+.git
+e2e
+*.md
+.env
+.env.*
