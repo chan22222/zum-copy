@@ -28,9 +28,16 @@
 }
 
 html,
-body,
-#root {
+body {
   height: 100%;
+  /* 모바일에서 당겨서 새로고침으로 통화가 끊기는 것 방지 */
+  overscroll-behavior-y: none;
+}
+
+#root {
+  /* dvh: 모바일 브라우저 주소창/키보드에 맞춰 실제 보이는 높이를 따라간다 */
+  height: 100vh;
+  height: 100dvh;
 }
 
 body {

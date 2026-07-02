@@ -56,8 +56,8 @@ export default function ControlBar({
   }
 
   return (
-    <div className="flex justify-center px-4 pt-2 pb-4">
-      <div className="flex items-center gap-2 rounded-2xl border border-ink-700 bg-ink-800/95 px-3 py-2">
+    <div className="flex justify-center px-2 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-4">
+      <div className="flex items-center gap-1 rounded-2xl border border-ink-700 bg-ink-800/95 px-2 py-2 sm:gap-2 sm:px-3">
         {/* 마이크 + 입력 볼륨 메뉴 */}
         <div className="relative flex items-center">
           <button
@@ -196,7 +196,7 @@ export default function ControlBar({
           type="button"
           onClick={onLeave}
           aria-label="통화 나가기"
-          className="flex h-11 items-center gap-2 rounded-full bg-alert-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-alert-500"
+          className="flex h-11 items-center gap-2 rounded-full bg-alert-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-alert-500 sm:px-5"
         >
           <PhoneOffIcon className="h-5 w-5" />
           <span className="hidden sm:inline">나가기</span>

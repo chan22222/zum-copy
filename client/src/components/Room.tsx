@@ -32,6 +32,8 @@ export default function Room({ roomId, userName, onLeave }: Props) {
   const [volumes, setVolumes] = useState<Record<string, number>>({})
   const [fsTileId, setFsTileId] = useState<string | null>(null)
   const [fsChatOpen, setFsChatOpen] = useState(true)
+  const [isPortraitTouch, setIsPortraitTouch] = useState(false)
+  const [rotateHintDismissed, setRotateHintDismissed] = useState(false)
   const seenCountRef = useRef(0)
   const copiedTimerRef = useRef<number | undefined>(undefined)
   const fsRef = useRef<HTMLDivElement>(null)
@@ -46,6 +48,37 @@ export default function Room({ roomId, userName, onLeave }: Props) {
   }, [room.messages, chatOpen])
 
   useEffect(() => () => window.clearTimeout(copiedTimerRef.current), [])
+
+  // 방향 잠금이 안 되는 모바일(iOS 등)에서 세로로 들고 있으면 가로 전환 안내
+  useEffect(() => {
+    if (!window.matchMedia('(pointer: coarse)').matches) return
+    const query = window.matchMedia('(orientation: portrait)')
+    const update = () => setIsPortraitTouch(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+
+  // 화면 공유 시 참가자 썸네일 줄 위치:
+  // 큰 화면(≥1280px)과 모바일 가로는 왼쪽 세로 배치(공유 화면 높이 확보),
+  // 모바일 세로와 1024 같은 중간 크기는 아래 가로 배치(가로 폭 확보)
+  const [stripSide, setStripSide] = useState(false)
+  useEffect(() => {
+    const coarse = window.matchMedia('(pointer: coarse)')
+    const portraitQuery = window.matchMedia('(orientation: portrait)')
+    const wide = window.matchMedia('(min-width: 1280px)')
+    const update = () =>
+      setStripSide(wide.matches || (coarse.matches && !portraitQuery.matches))
+    update()
+    coarse.addEventListener('change', update)
+    portraitQuery.addEventListener('change', update)
+    wide.addEventListener('change', update)
+    return () => {
+      coarse.removeEventListener('change', update)
+      portraitQuery.removeEventListener('change', update)
+      wide.removeEventListener('change', update)
+    }
+  }, [])
 
   const copyInvite = async () => {
     try {
@@ -124,7 +157,7 @@ export default function Room({ roomId, userName, onLeave }: Props) {
     if (fsTileId && !tiles.some((tile) => tile.id === fsTileId)) exitFullscreen()
   }, [fsTileId, tiles, exitFullscreen])
 
-  const renderTile = (tile: Tile, variant: 'grid' | 'stage' | 'strip' | 'full') => (
+  const renderTile = (tile: Tile, variant: 'grid' | 'stage' | 'strip' | 'rail' | 'full') => (
     <VideoTile
       key={tile.id}
       name={tile.name}
@@ -168,14 +201,25 @@ export default function Room({ roomId, userName, onLeave }: Props) {
       <div className="relative flex min-h-0 flex-1">
         <main className="flex min-w-0 flex-1 flex-col">
           {stage ? (
-            <>
-              <div className="min-h-0 flex-1 p-3">{renderTile(stage, 'stage')}</div>
-              {strip.length > 0 && (
-                <div className="flex h-28 gap-2 overflow-x-auto px-3 pb-1">
-                  {strip.map((tile) => renderTile(tile, 'strip'))}
-                </div>
-              )}
-            </>
+            stripSide ? (
+              <div className="flex min-h-0 flex-1 gap-2 p-3">
+                {strip.length > 0 && (
+                  <div className="flex w-28 shrink-0 flex-col gap-2 overflow-y-auto sm:w-40">
+                    {strip.map((tile) => renderTile(tile, 'rail'))}
+                  </div>
+                )}
+                <div className="min-h-0 min-w-0 flex-1">{renderTile(stage, 'stage')}</div>
+              </div>
+            ) : (
+              <>
+                <div className="min-h-0 flex-1 p-3">{renderTile(stage, 'stage')}</div>
+                {strip.length > 0 && (
+                  <div className="flex h-28 gap-2 overflow-x-auto px-3 pb-1">
+                    {strip.map((tile) => renderTile(tile, 'strip'))}
+                  </div>
+                )}
+              </>
+            )
           ) : (
             <div className="grid min-h-0 flex-1 auto-rows-[minmax(9rem,1fr)] grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] gap-3 overflow-y-auto p-4">
               {tiles.map((tile) => renderTile(tile, 'grid'))}
@@ -209,6 +253,20 @@ export default function Room({ roomId, userName, onLeave }: Props) {
           />
         )}
 
+        {isPortraitTouch && !rotateHintDismissed && (
+          <div className="absolute top-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-ink-600 bg-ink-800/95 px-3 py-2 text-xs whitespace-nowrap text-fog-100 shadow-lg">
+            화면을 가로로 돌리면 더 잘 보여요
+            <button
+              type="button"
+              onClick={() => setRotateHintDismissed(true)}
+              aria-label="안내 닫기"
+              className="text-fog-500 transition-colors hover:text-fog-100"
+            >
+              <CloseIcon className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
         {room.notice && (
           <div
             role="status"
@@ -240,8 +298,8 @@ export default function Room({ roomId, userName, onLeave }: Props) {
           </div>
 
           <div
-            className={`absolute top-4 z-30 flex gap-2 transition-all ${
-              fsChatOpen ? 'right-[21rem]' : 'right-4'
+            className={`absolute top-4 right-4 z-30 flex gap-2 transition-all ${
+              fsChatOpen ? 'sm:right-[21rem]' : ''
             }`}
           >
             <button

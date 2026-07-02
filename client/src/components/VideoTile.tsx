@@ -7,7 +7,8 @@ interface Props {
   stream: MediaStream | null
   media: MediaState
   isSelf: boolean
-  variant?: 'grid' | 'stage' | 'strip' | 'full'
+  /** strip: 가로 줄용(고정 폭), rail: 세로 줄용(가로형 비율) */
+  variant?: 'grid' | 'stage' | 'strip' | 'rail' | 'full'
   volume?: number
   onVolumeChange?: (volume: number) => void
   onDoubleClick?: () => void
@@ -18,6 +19,7 @@ const FRAME_CLASS: Record<NonNullable<Props['variant']>, string> = {
   grid: 'h-full w-full rounded-xl',
   stage: 'h-full w-full rounded-xl ring-2 ring-spot-400/80',
   strip: 'h-full w-44 shrink-0 rounded-xl',
+  rail: 'aspect-video w-full shrink-0 rounded-xl',
   full: 'h-full w-full',
 }
 
@@ -49,7 +51,7 @@ export default function VideoTile({
   const hasVideo = (media.video || media.screen) && stream !== null
   const initial = (name.trim().charAt(0) || '?').toUpperCase()
   const avatarClass =
-    variant === 'strip'
+    variant === 'strip' || variant === 'rail'
       ? 'h-10 w-10 text-base'
       : variant === 'grid'
         ? 'h-16 w-16 text-2xl'

@@ -40,8 +40,8 @@ export default function ChatPanel({ messages, selfId, onSend, onClose, overlay =
     <aside
       className={
         overlay
-          ? 'absolute inset-y-0 right-0 z-20 flex w-80 max-w-[85vw] flex-col'
-          : 'absolute inset-y-0 right-0 z-20 flex w-full max-w-sm flex-col border-l border-ink-700 bg-ink-900 lg:static lg:w-80 lg:max-w-none'
+          ? 'absolute inset-y-0 right-0 z-20 flex w-80 max-w-[85vw] flex-col pt-14 sm:pt-0'
+          : 'absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-ink-700 bg-ink-900 sm:max-w-sm lg:static lg:w-80 lg:max-w-none'
       }
     >
       <div
@@ -97,7 +97,9 @@ export default function ChatPanel({ messages, selfId, onSend, onClose, overlay =
 
       <form
         onSubmit={handleSubmit}
-        className={`p-3 ${overlay ? '' : 'border-t border-ink-700'}`}
+        className={`p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] ${
+          overlay ? '' : 'border-t border-ink-700'
+        }`}
       >
         <div className="flex gap-2">
           <label htmlFor="chat-input" className="sr-only">
@@ -110,7 +112,7 @@ export default function ChatPanel({ messages, selfId, onSend, onClose, overlay =
             placeholder="메시지 보내기"
             maxLength={2000}
             autoComplete="off"
-            className={`min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm placeholder:text-fog-500 focus:border-cord-500 ${
+            className={`min-w-0 flex-1 rounded-lg border px-3 py-2 text-base placeholder:text-fog-500 focus:border-cord-500 sm:text-sm ${
               overlay ? 'border-fog-500/40 bg-ink-950/60' : 'border-ink-600 bg-ink-800'
             }`}
           />
