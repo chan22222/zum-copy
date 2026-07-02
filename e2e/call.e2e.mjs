@@ -99,6 +99,26 @@ try {
   })
   check('볼륨 슬라이더가 원격 오디오 볼륨에 반영', volumeApplied)
 
+  // 마이크 입력 볼륨 메뉴
+  await bob.getByRole('button', { name: '마이크 옵션' }).click()
+  await bob.locator('#mic-gain').waitFor({ timeout: 5000 })
+  await bob.locator('#mic-gain').evaluate((el) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+    setter.call(el, '1.5')
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  const gainShown = (await bob.getByText('150%').count()) > 0
+  check('마이크 입력 볼륨 슬라이더 동작 (150% 표시)', gainShown)
+  await bob.getByRole('button', { name: '마이크 옵션' }).click()
+
+  // 카메라 선택 메뉴 (fake 장치가 목록에 표시되는지)
+  await bob.getByRole('button', { name: '카메라 선택' }).click()
+  await bob.locator('div.bottom-14').waitFor({ timeout: 5000 })
+  const noCameraShown = (await bob.getByText('사용 가능한 카메라가 없습니다').count()) > 0
+  const cameraEntries = await bob.locator('div.bottom-14 button').count()
+  check('카메라 선택 메뉴에 장치 목록 표시', !noCameraShown && cameraEntries >= 1)
+  await bob.getByRole('button', { name: '카메라 선택' }).click()
+
   await alice.getByRole('button', { name: '카메라 켜기' }).click()
   await bob.waitForFunction(
     () => {

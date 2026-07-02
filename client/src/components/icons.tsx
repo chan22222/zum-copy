@@ -95,6 +95,14 @@ export function PhoneOffIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+export function ChevronUpIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...props}>
+      <path d="m18 15-6-6-6 6" />
+    </Svg>
+  )
+}
+
 export function ExpandIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Svg {...props}>

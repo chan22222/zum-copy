@@ -187,6 +187,11 @@ export default function Room({ roomId, userName, onLeave }: Props) {
             chatOpen={chatOpen}
             unread={unread}
             canShareScreen={canShareScreen}
+            micGain={room.micGain}
+            cameras={room.cameras}
+            cameraId={room.cameraId}
+            onMicGainChange={room.setMicGain}
+            onSelectCamera={(deviceId) => void room.selectCamera(deviceId)}
             onToggleMic={() => void room.toggleMic()}
             onToggleCamera={() => void room.toggleCamera()}
             onToggleScreen={() => void room.toggleScreen()}

@@ -10,6 +10,37 @@ const DEFAULT_ICE: RTCIceServer[] = [
   { urls: 'stun:stun1.l.google.com:19302' },
 ]
 
+// 통화용 마이크 캡처 설정: 에코 제거·노이즈 억제·자동 게인 + 48kHz
+const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+  channelCount: 1,
+  sampleRate: 48000,
+}
+
+export interface CameraOption {
+  deviceId: string
+  label: string
+}
+
+// Opus 인코딩 품질 상향: 브라우저 기본(~32kbps) 대신 최대 128kbps + FEC.
+// SDP의 opus fmtp 라인에 파라미터를 병합한다.
+function boostOpusQuality(sdp: string): string {
+  const rtpmap = sdp.match(/a=rtpmap:(\d+) opus\/48000/)
+  if (!rtpmap) return sdp
+  const payloadType = rtpmap[1]
+  const fmtpRegex = new RegExp(`a=fmtp:${payloadType} (.*)`)
+  if (!fmtpRegex.test(sdp)) return sdp
+  return sdp.replace(fmtpRegex, (_line, params: string) => {
+    const kept = params
+      .split(';')
+      .map((param) => param.trim())
+      .filter((param) => !param.startsWith('maxaveragebitrate') && !param.startsWith('useinbandfec'))
+    return `a=fmtp:${payloadType} ${[...kept, 'maxaveragebitrate=128000', 'useinbandfec=1'].join(';')}`
+  })
+}
+
 export type RoomStatus = 'connecting' | 'connected' | 'error'
 
 interface PeerConn {
@@ -27,6 +58,11 @@ export function useRoom(roomId: string, userName: string) {
   const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map())
   const iceServersRef = useRef<RTCIceServer[]>(DEFAULT_ICE)
   const micTrackRef = useRef<MediaStreamTrack | null>(null)
+  const micSendTrackRef = useRef<MediaStreamTrack | null>(null)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const gainNodeRef = useRef<GainNode | null>(null)
+  const micGainRef = useRef(1)
+  const cameraIdRef = useRef<string | null>(null)
   const cameraTrackRef = useRef<MediaStreamTrack | null>(null)
   const screenTrackRef = useRef<MediaStreamTrack | null>(null)
   const mediaRef = useRef<MediaState>({ audio: false, video: false, screen: false })
@@ -40,6 +76,9 @@ export function useRoom(roomId: string, userName: string) {
   const [media, setMedia] = useState<MediaState>(mediaRef.current)
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [micGain, setMicGainState] = useState(1)
+  const [cameras, setCameras] = useState<CameraOption[]>([])
+  const [cameraId, setCameraId] = useState<string | null>(null)
 
   const showNotice = useCallback((text: string) => {
     setNotice(text)
@@ -53,6 +92,45 @@ export function useRoom(roomId: string, userName: string) {
     socketRef.current?.emit('media-state', next)
   }, [])
 
+  // 마이크 원본 트랙을 WebAudio 게인 노드에 통과시켜 입력 볼륨을 조절 가능하게 만든다.
+  // 상대에게는 게인이 적용된 가공 트랙이 전송된다.
+  const createProcessedMicTrack = useCallback((raw: MediaStreamTrack): MediaStreamTrack => {
+    try {
+      const ctx = audioCtxRef.current ?? new AudioContext()
+      audioCtxRef.current = ctx
+      void ctx.resume().catch(() => {})
+      gainNodeRef.current?.disconnect()
+      const source = ctx.createMediaStreamSource(new MediaStream([raw]))
+      const gain = ctx.createGain()
+      gain.gain.value = micGainRef.current
+      const destination = ctx.createMediaStreamDestination()
+      source.connect(gain)
+      gain.connect(destination)
+      gainNodeRef.current = gain
+      return destination.stream.getAudioTracks()[0]
+    } catch (err) {
+      console.error('마이크 게인 파이프라인 생성 실패 — 원본 트랙 사용', err)
+      return raw
+    }
+  }, [])
+
+  const refreshCameras = useCallback(async () => {
+    try {
+      if (!navigator.mediaDevices?.enumerateDevices) return
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      setCameras(
+        devices
+          .filter((device) => device.kind === 'videoinput')
+          .map((device, index) => ({
+            deviceId: device.deviceId,
+            label: device.label || `카메라 ${index + 1}`,
+          })),
+      )
+    } catch {
+      /* 장치 목록 조회 실패 — 메뉴만 비워 둔다 */
+    }
+  }, [])
+
   // 기존 참가자 쪽: 신규 입장자의 offer에 실려 온 트랜시버를 재사용해
   // 같은 m-line에서 양방향(sendrecv)으로 보낸다. 각자 addTransceiver를 하면
   // 동시 offer(glare)로 m-line이 중복 생성된다.
@@ -62,7 +140,8 @@ export function useRoom(roomId: string, userName: string) {
       if (kind === 'audio' && !conn.audioSender) {
         transceiver.direction = 'sendrecv'
         conn.audioSender = transceiver.sender
-        if (micTrackRef.current) void transceiver.sender.replaceTrack(micTrackRef.current)
+        const sendTrack = micSendTrackRef.current ?? micTrackRef.current
+        if (sendTrack) void transceiver.sender.replaceTrack(sendTrack)
       } else if (kind === 'video' && !conn.videoSender) {
         transceiver.direction = 'sendrecv'
         conn.videoSender = transceiver.sender
@@ -94,7 +173,8 @@ export function useRoom(roomId: string, userName: string) {
       const videoTx = pc.addTransceiver('video', { direction: 'sendrecv' })
       conn.audioSender = audioTx.sender
       conn.videoSender = videoTx.sender
-      if (micTrackRef.current) void audioTx.sender.replaceTrack(micTrackRef.current)
+      const sendTrack = micSendTrackRef.current ?? micTrackRef.current
+      if (sendTrack) void audioTx.sender.replaceTrack(sendTrack)
       const videoTrack = screenTrackRef.current ?? cameraTrackRef.current
       if (videoTrack) void videoTx.sender.replaceTrack(videoTrack)
     }
@@ -105,7 +185,9 @@ export function useRoom(roomId: string, userName: string) {
     pc.onnegotiationneeded = async () => {
       try {
         conn.makingOffer = true
-        await pc.setLocalDescription()
+        const offer = await pc.createOffer()
+        offer.sdp = boostOpusQuality(offer.sdp ?? '')
+        await pc.setLocalDescription(offer)
         socket.emit('signal', { to: peerId, description: pc.localDescription })
       } catch (err) {
         console.error('협상 시작 실패', err)
@@ -227,7 +309,9 @@ export function useRoom(roomId: string, userName: string) {
             await pc.setRemoteDescription(payload.description)
             if (payload.description.type === 'offer') {
               adoptTransceivers(conn)
-              await pc.setLocalDescription()
+              const answer = await pc.createAnswer()
+              answer.sdp = boostOpusQuality(answer.sdp ?? '')
+              await pc.setLocalDescription(answer)
               socket.emit('signal', { to: payload.from, description: pc.localDescription })
             }
           } else if (payload.candidate) {
@@ -262,36 +346,54 @@ export function useRoom(roomId: string, userName: string) {
         /* 기본 STUN 서버 사용 */
       }
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS })
         if (disposed) {
           stream.getTracks().forEach((track) => track.stop())
           return
         }
         micTrackRef.current = stream.getAudioTracks()[0]
+        micSendTrackRef.current = createProcessedMicTrack(micTrackRef.current)
         mediaRef.current = { ...mediaRef.current, audio: true }
         setMedia(mediaRef.current)
       } catch {
         if (!disposed) showNotice('마이크 권한이 없어 음소거 상태로 참여합니다.')
       }
+      void refreshCameras()
       if (!disposed) socket.connect()
     }
     void init()
+    navigator.mediaDevices?.addEventListener?.('devicechange', refreshCameras)
 
     return () => {
       disposed = true
       window.clearTimeout(noticeTimerRef.current)
+      navigator.mediaDevices?.removeEventListener?.('devicechange', refreshCameras)
       micTrackRef.current?.stop()
+      micSendTrackRef.current?.stop()
       cameraTrackRef.current?.stop()
       screenTrackRef.current?.stop()
       micTrackRef.current = null
+      micSendTrackRef.current = null
       cameraTrackRef.current = null
       screenTrackRef.current = null
+      gainNodeRef.current = null
+      void audioCtxRef.current?.close().catch(() => {})
+      audioCtxRef.current = null
       for (const id of [...connsRef.current.keys()]) closeConn(id)
       socket.removeAllListeners()
       socket.disconnect()
       socketRef.current = null
     }
-  }, [roomId, userName, createConn, closeConn, adoptTransceivers, showNotice])
+  }, [
+    roomId,
+    userName,
+    createConn,
+    closeConn,
+    adoptTransceivers,
+    createProcessedMicTrack,
+    refreshCameras,
+    showNotice,
+  ])
 
   // 모든 피어에게 내보내는 영상 트랙을 교체하고 로컬 미리보기를 갱신
   const applyVideoTrack = useCallback(async (track: MediaStreamTrack | null) => {
@@ -313,11 +415,12 @@ export function useRoom(roomId: string, userName: string) {
       return
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS })
       micTrackRef.current = stream.getAudioTracks()[0]
+      micSendTrackRef.current = createProcessedMicTrack(micTrackRef.current)
       for (const conn of connsRef.current.values()) {
         try {
-          await conn.audioSender?.replaceTrack(micTrackRef.current)
+          await conn.audioSender?.replaceTrack(micSendTrackRef.current)
         } catch (err) {
           console.error('오디오 트랙 교체 실패', err)
         }
@@ -326,7 +429,7 @@ export function useRoom(roomId: string, userName: string) {
     } catch {
       showNotice('마이크를 사용할 수 없습니다. 브라우저 권한을 확인해 주세요.')
     }
-  }, [emitMedia, showNotice])
+  }, [createProcessedMicTrack, emitMedia, showNotice])
 
   const toggleCamera = useCallback(async () => {
     const current = mediaRef.current
@@ -339,17 +442,28 @@ export function useRoom(roomId: string, userName: string) {
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: {
+          ...(cameraIdRef.current ? { deviceId: { ideal: cameraIdRef.current } } : {}),
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
       })
       const track = stream.getVideoTracks()[0]
       cameraTrackRef.current = track
+      const actualDeviceId = track.getSettings().deviceId
+      if (actualDeviceId) {
+        cameraIdRef.current = actualDeviceId
+        setCameraId(actualDeviceId)
+      }
       // 화면 공유 중이면 공유 화면이 우선, 카메라는 공유 종료 후 복귀
       if (!current.screen) await applyVideoTrack(track)
       emitMedia({ ...current, video: true })
+      // 카메라 권한 승인 후에는 장치 라벨이 채워지므로 목록 갱신
+      void refreshCameras()
     } catch {
       showNotice('카메라를 사용할 수 없습니다. 브라우저 권한을 확인해 주세요.')
     }
-  }, [applyVideoTrack, emitMedia, showNotice])
+  }, [applyVideoTrack, emitMedia, refreshCameras, showNotice])
 
   const stopScreenShare = useCallback(async () => {
     screenTrackRef.current?.stop()
@@ -378,6 +492,35 @@ export function useRoom(roomId: string, userName: string) {
     }
   }, [applyVideoTrack, emitMedia, stopScreenShare])
 
+  // 내 마이크 입력 볼륨 (0~2, 1이 원본 크기)
+  const setMicGain = useCallback((value: number) => {
+    const clamped = Math.min(2, Math.max(0, value))
+    micGainRef.current = clamped
+    setMicGainState(clamped)
+    if (gainNodeRef.current) gainNodeRef.current.gain.value = clamped
+  }, [])
+
+  // 카메라 장치 변경: 켜져 있으면 즉시 교체, 꺼져 있으면 다음에 켤 때 적용
+  const selectCamera = useCallback(
+    async (deviceId: string) => {
+      cameraIdRef.current = deviceId
+      setCameraId(deviceId)
+      if (!mediaRef.current.video) return
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        })
+        const track = stream.getVideoTracks()[0]
+        cameraTrackRef.current?.stop()
+        cameraTrackRef.current = track
+        if (!mediaRef.current.screen) await applyVideoTrack(track)
+      } catch {
+        showNotice('선택한 카메라를 사용할 수 없습니다.')
+      }
+    },
+    [applyVideoTrack, showNotice],
+  )
+
   const sendMessage = useCallback((text: string) => {
     const clean = text.trim()
     if (!clean) return
@@ -393,6 +536,11 @@ export function useRoom(roomId: string, userName: string) {
     media,
     localStream,
     notice,
+    micGain,
+    cameras,
+    cameraId,
+    setMicGain,
+    selectCamera,
     toggleMic,
     toggleCamera,
     toggleScreen,
