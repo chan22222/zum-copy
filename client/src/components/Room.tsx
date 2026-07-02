@@ -82,10 +82,7 @@ export default function Room({ roomId, userName, onLeave }: Props) {
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-2 border-b border-ink-700 px-4 py-2.5">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-cord-600 text-sm font-bold text-white">
-          C
-        </div>
-        <span className="hidden font-semibold tracking-tight sm:inline">Cord</span>
+        <span className="hidden font-semibold tracking-tight sm:inline">Virtual Meeting</span>
         <span className="rounded-md bg-ink-700 px-2 py-1 font-mono text-xs text-fog-300">
           {roomId}
         </span>

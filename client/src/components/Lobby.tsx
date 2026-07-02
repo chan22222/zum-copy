@@ -57,14 +57,8 @@ export default function Lobby({ initialRoom, onJoin }: Props) {
       />
 
       <main className="relative w-full max-w-md">
-        <div className="mb-8 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cord-600 text-lg font-bold text-white">
-            C
-          </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">Cord</h1>
-            <p className="text-sm text-fog-500">링크 하나로 시작하는 리뷰 콜</p>
-          </div>
+        <div className="mb-8">
+          <h1 className="text-xl font-bold tracking-tight">Virtual Meeting</h1>
         </div>
 
         <div className="rounded-2xl border border-ink-700 bg-ink-900 p-6 sm:p-8">
@@ -77,7 +71,7 @@ export default function Lobby({ initialRoom, onJoin }: Props) {
             </p>
           ) : (
             <p className="mb-6 text-sm leading-relaxed text-fog-300">
-              음성 대화, 카메라, 화면 공유, 채팅으로 고객과 함께 결과물을 확인하세요.
+              음성 대화, 카메라, 화면 공유, 채팅 서비스
             </p>
           )}
 
@@ -162,7 +156,7 @@ export default function Lobby({ initialRoom, onJoin }: Props) {
         </div>
 
         <p className="mt-6 text-center text-xs leading-relaxed text-fog-500">
-          통화 상대에게는 초대 링크만 보내면 됩니다. 설치나 회원가입이 필요 없어요.
+          설치나 가입 없이 상대에게 초대 링크만 보내세요.
         </p>
       </main>
     </div>
