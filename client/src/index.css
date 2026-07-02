@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+
+  /* ink: 배경 계열(어두운 순서), fog: 텍스트 계열 */
+  --color-ink-950: #101116;
+  --color-ink-900: #15171d;
+  --color-ink-800: #1b1e25;
+  --color-ink-700: #242832;
+  --color-ink-600: #2f3440;
+  --color-ink-500: #3d4351;
+  --color-fog-500: #868da0;
+  --color-fog-300: #b4bac9;
+  --color-fog-100: #e9ebf1;
+
+  /* cord: 브랜드 인디고, spot: 화면 공유 스포트라이트, alert: 종료/음소거 */
+  --color-cord-400: #96a2fa;
+  --color-cord-500: #7c8cf8;
+  --color-cord-600: #6472ea;
+  --color-cord-700: #5261d3;
+  --color-spot-400: #f0b160;
+  --color-spot-500: #e29c43;
+  --color-alert-500: #e96a6a;
+  --color-alert-600: #d95555;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-ink-950 font-sans text-fog-100 antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-ink-500) transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-cord-500);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
