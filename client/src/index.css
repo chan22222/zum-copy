@@ -47,6 +47,16 @@ body {
   outline-offset: 2px;
 }
 
+/* 투명 배경(전체화면 채팅) 위에서 텍스트가 어떤 영상 위에서도 읽히도록 하는 외곽선 */
+.text-outline {
+  text-shadow:
+    -1px -1px 0 rgb(0 0 0 / 0.85),
+    1px -1px 0 rgb(0 0 0 / 0.85),
+    -1px 1px 0 rgb(0 0 0 / 0.85),
+    1px 1px 0 rgb(0 0 0 / 0.85),
+    0 0 6px rgb(0 0 0 / 0.7);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

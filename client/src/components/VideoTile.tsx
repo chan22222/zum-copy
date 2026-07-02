@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { MediaState } from '../types'
-import { MicOffIcon, VolumeIcon } from './icons'
+import { ExpandIcon, MicOffIcon, VolumeIcon } from './icons'
 
 interface Props {
   name: string
@@ -11,6 +11,7 @@ interface Props {
   volume?: number
   onVolumeChange?: (volume: number) => void
   onDoubleClick?: () => void
+  onFullscreen?: () => void
 }
 
 const FRAME_CLASS: Record<NonNullable<Props['variant']>, string> = {
@@ -29,6 +30,7 @@ export default function VideoTile({
   volume,
   onVolumeChange,
   onDoubleClick,
+  onFullscreen,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
 
@@ -88,22 +90,37 @@ export default function VideoTile({
           화면 공유 중
         </span>
       )}
-      {onVolumeChange && (
+      {(onVolumeChange || onFullscreen) && (
         <div
-          className="absolute right-2 bottom-2 flex items-center gap-1.5 rounded-md bg-ink-950/70 px-2 py-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+          className="absolute right-2 bottom-2 flex items-center gap-1.5"
           onDoubleClick={(event) => event.stopPropagation()}
         >
-          <VolumeIcon className="h-3.5 w-3.5 shrink-0 text-fog-300" />
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={volume ?? 1}
-            onChange={(event) => onVolumeChange(Number(event.target.value))}
-            aria-label={`${name} 소리 크기`}
-            className="h-1 w-20 cursor-pointer accent-cord-500"
-          />
+          {onVolumeChange && (
+            <div className="flex items-center gap-1.5 rounded-md bg-ink-950/70 px-2 py-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+              <VolumeIcon className="h-3.5 w-3.5 shrink-0 text-fog-300" />
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={volume ?? 1}
+                onChange={(event) => onVolumeChange(Number(event.target.value))}
+                aria-label={`${name} 소리 크기`}
+                className="h-1 w-20 cursor-pointer accent-cord-500"
+              />
+            </div>
+          )}
+          {onFullscreen && (
+            <button
+              type="button"
+              onClick={onFullscreen}
+              aria-label={`${name} 전체화면`}
+              title="전체화면"
+              className="flex h-7 w-7 items-center justify-center rounded-md bg-ink-950/60 text-fog-100/80 transition-colors hover:bg-ink-950/90 hover:text-fog-100"
+            >
+              <ExpandIcon className="h-4 w-4" />
+            </button>
+          )}
         </div>
       )}
     </div>

@@ -135,6 +135,7 @@ export default function Room({ roomId, userName, onLeave }: Props) {
       volume={volumes[tile.id] ?? 1}
       onVolumeChange={tile.isSelf ? undefined : (volume) => setPeerVolume(tile.id, volume)}
       onDoubleClick={variant === 'full' ? undefined : () => setFsTileId(tile.id)}
+      onFullscreen={variant === 'full' ? undefined : () => setFsTileId(tile.id)}
     />
   )
 
